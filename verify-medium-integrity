@@ -1,0 +1,61 @@
+#!/bin/bash -e
+
+#  verify-medium-integrity -- detects if installation media is corrupt
+#  Copyright (C) 2025 potatus
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+if [ "$EUID" -ne 0 ]; then
+    echo "This script needs to be run with root permissions."
+    exit 1
+fi
+
+
+flags=()
+
+# configs, ghost files and build side effects are expected to be different from what's in the RPM package
+flags+=('--noghost')
+flags+=('--noconfig')
+flags+=('--noartifact')
+
+# file modification dates and ownership are irrelevant for checking media integrity
+flags+=('--nomtime')
+flags+=('--nouser')
+flags+=('--nogroup')
+flags+=('--nomode')
+flags+=('--nordev')
+flags+=('--nocaps')
+
+errors=0
+mapfile -t packages < <(rpm -qa)
+
+for package in "${packages[@]}"
+do
+    ret=0
+    out=$(rpm --verify "${flags[@]}" -- "${package}") || ret=1
+
+    if ((ret != 0)); then
+        errors=$((errors+1))
+
+        echo "Discrepancies found in package '${package}':"
+        echo "$out"
+        echo ""
+    fi
+done
+
+if ((errors > 0)); then
+    echo "$errors packages have discrepancies. This might indicate a corrupt installation medium."
+else
+    echo "No discrepancies found."
+fi
